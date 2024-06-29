@@ -1,11 +1,13 @@
 package com.yupi.usercenter.controller;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.fasterxml.jackson.databind.ser.Serializers;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.yupi.usercenter.common.BaseResponse;
 import com.yupi.usercenter.common.ErrorCode;
 import com.yupi.usercenter.common.ResultUtils;
 import com.yupi.usercenter.exception.BusinessException;
+import com.yupi.usercenter.mapper.UserMapper;
 import com.yupi.usercenter.model.domain.User;
 import com.yupi.usercenter.model.domain.request.UserLoginRequest;
 import com.yupi.usercenter.model.domain.request.UserRegisterRequest;
@@ -14,17 +16,16 @@ import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.lang3.Validate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
 import javax.servlet.http.HttpServletRequest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
-
-import static com.yupi.usercenter.contant.UserConstant.ADMIN_ROLE;
-import static com.yupi.usercenter.contant.UserConstant.USER_LOGIN_STATE;
 
 /**
  * 用户接口
@@ -32,6 +33,8 @@ import static com.yupi.usercenter.contant.UserConstant.USER_LOGIN_STATE;
  * @author <a href="https://github.com/liyupi">程序员鱼皮</a>
  * @from <a href="https://yupi.icu">编程导航知识星球</a>
  */
+
+@CrossOrigin
 @Api(tags = "用户API实现")
 @RestController
 @RequestMapping("/user")
@@ -111,15 +114,7 @@ public class UserController {
     @GetMapping("/current")
     @ApiOperation(value = "获取当前用户")
     public BaseResponse<User> getCurrentUser(HttpServletRequest request) {
-        Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
-        User currentUser = (User) userObj;
-        if (currentUser == null) {
-            throw new BusinessException(ErrorCode.NOT_LOGIN);
-        }
-        long userId = currentUser.getId();
-        // TODO 校验用户是否合法
-        User user = userService.getById(userId);
-        User safetyUser = userService.getSafetyUser(user);
+        User safetyUser = userService.getLoginUser(request);
         return ResultUtils.success(safetyUser);
     }
 
@@ -128,7 +123,8 @@ public class UserController {
     @GetMapping("/search")
     @ApiOperation(value = "用户搜索")
     public BaseResponse<List<User>> searchUsers(String username, HttpServletRequest request) {
-        if (!isAdmin(request)) {
+        User loginUser = userService.getLoginUser(request);
+        if (!userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH, "缺少管理员权限");
         }
         QueryWrapper<User> queryWrapper = new QueryWrapper<>();
@@ -140,16 +136,19 @@ public class UserController {
         return ResultUtils.success(list);
     }
 
-    @PostMapping("/delete")
+    @GetMapping("/delete")
     @ApiOperation(value = "用户删除")
-    public BaseResponse<Boolean> deleteUser(@RequestBody long id, HttpServletRequest request) {
-        if (!isAdmin(request)) {
+    public BaseResponse<Boolean> deleteUser( @RequestParam("id") Long id, HttpServletRequest request) {
+        User loginUser = userService.getLoginUser(request);
+        if (!userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH);
         }
         if (id <= 0) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR);
         }
         boolean b = userService.removeById(id);
+        List<CompletableFuture> futures = new ArrayList<>();
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
         return ResultUtils.success(b);
     }
 
@@ -163,19 +162,21 @@ public class UserController {
         return ResultUtils.success(users);
     }
 
-    // [鱼皮的学习圈](https://yupi.icu) 从 0 到 1 求职指导，斩获 offer！1 对 1 简历优化服务、2000+ 求职面试经验分享、200+ 真实简历和建议参考、25w 字前后端精选面试题
-
-    /**
-     * 是否为管理员
-     *
-     * @param request
-     * @return
-     */
-    private boolean isAdmin(HttpServletRequest request) {
-        // 仅管理员可查询
-        Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
-        User user = (User) userObj;
-        return user != null && user.getUserRole() == ADMIN_ROLE;
+    @PostMapping("/update")
+    @ApiOperation(value = "更新用户")
+    public BaseResponse<Integer> updateUser(@RequestBody User user, HttpServletRequest request) {
+        if (Objects.isNull(user)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        User loginUser = userService.getLoginUser(request);
+        int row = userService.updateUser(user, loginUser);
+        return ResultUtils.success(row);
     }
 
+    @GetMapping("/recommend")
+    @ApiOperation(value = "用户推荐")
+    public BaseResponse<IPage<User>> recommend(long pageNum, long pageSize) {
+        Page<User> page = userService.page(Page.of(pageNum, pageSize), null);
+        return ResultUtils.success(page);
+    }
 }

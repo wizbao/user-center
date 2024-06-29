@@ -1,6 +1,8 @@
 package com.yupi.usercenter.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -22,6 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.yupi.usercenter.contant.UserConstant.ADMIN_ROLE;
 import static com.yupi.usercenter.contant.UserConstant.USER_LOGIN_STATE;
 
 /**
@@ -69,6 +72,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
         if (planetCode.length() > 5) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "星球编号过长");
         }
+        // todo zwb 校验星球编码不能重复
         // 账户不能包含特殊字符
         String validPattern = "[`~!@#$%^&*()+=|{}':;',\\\\[\\\\].<>/?~！@#￥%……&*（）——+|{}【】‘；：”“’。，、？]";
         Matcher matcher = Pattern.compile(validPattern).matcher(userAccount);
@@ -212,6 +216,42 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User>
             }
             return true;
         }).map(this::getSafetyUser).collect(Collectors.toList());
+    }
+
+    @Override
+    public int updateUser(User user, User loginUser) {
+        if (Objects.isNull(user) || Objects.isNull(user.getId())) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR);
+        }
+        // 只有管理员或者用户自己才能更新用户信息
+        if (!isAdmin(loginUser) && !Objects.equals(user.getId(), loginUser.getId())) {
+            throw new BusinessException(ErrorCode.NO_AUTH);
+        }
+        User oldUser = userMapper.selectById(user.getId());
+        if (Objects.isNull(oldUser)) {
+            throw new BusinessException(ErrorCode.NULL_ERROR);
+        }
+        return userMapper.updateById(user);
+    }
+
+
+    @Override
+    public boolean isAdmin(User user) {
+        // 仅管理员可查询
+        return user != null && user.getUserRole() == ADMIN_ROLE;
+    }
+
+    @Override
+    public User getLoginUser(HttpServletRequest request) {
+        Object userObj = request.getSession().getAttribute(USER_LOGIN_STATE);
+        User currentUser = (User) userObj;
+        if (currentUser == null) {
+            throw new BusinessException(ErrorCode.NOT_LOGIN);
+        }
+        long userId = currentUser.getId();
+        // TODO 校验用户是否合法
+        User user = this.getById(userId);
+        return this.getSafetyUser(user);
     }
 
 }

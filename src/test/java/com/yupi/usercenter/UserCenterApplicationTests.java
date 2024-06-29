@@ -11,6 +11,7 @@ import javax.annotation.Resource;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -39,6 +40,16 @@ class UserCenterApplicationTests {
         List<User> users = userService.searchUserByTags(Arrays.asList("java","开发"));
         System.out.println(users);
         Assertions.assertNotEquals(users.size(),0);
+    }
+
+    @Test
+    void testString(){
+        List<String> strList = Arrays.asList("a", "b");
+        System.out.println(strList);
+        Object[] array = strList.toArray();
+        System.out.println(array);
+        String[] array1 = strList.toArray(new String[]{});
+        System.out.println(Arrays.toString(array1));
     }
 
 }
