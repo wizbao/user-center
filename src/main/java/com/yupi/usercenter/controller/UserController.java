@@ -3,6 +3,8 @@ package com.yupi.usercenter.controller;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.yupi.usercenter.common.BaseResponse;
 import com.yupi.usercenter.common.ErrorCode;
 import com.yupi.usercenter.common.ResultUtils;
@@ -14,8 +16,10 @@ import com.yupi.usercenter.model.domain.request.UserRegisterRequest;
 import com.yupi.usercenter.service.UserService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
@@ -38,10 +42,13 @@ import java.util.stream.Collectors;
 @Api(tags = "用户API实现")
 @RestController
 @RequestMapping("/user")
+@Slf4j
 public class UserController {
 
     @Resource
     private UserService userService;
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
 
     /**
      * 用户注册
@@ -176,7 +183,22 @@ public class UserController {
     @GetMapping("/recommend")
     @ApiOperation(value = "用户推荐")
     public BaseResponse<IPage<User>> recommend(long pageNum, long pageSize) {
+        // 先查缓存，如果有缓存，直接返回结果
+        String key = String.format("%s:%s:%s","ally-link","user","recommend");
+        String userPageStr = stringRedisTemplate.opsForValue().get(key);
+        Gson gson = new Gson();
+        Page<User> userPage = gson.fromJson(userPageStr, new TypeToken<Page<User>>() {
+        }.getType());
+        if (Objects.nonNull(userPage)) {
+            return ResultUtils.success(userPage);
+        }
+        // 没有缓存，查数据库并写入缓存
         Page<User> page = userService.page(Page.of(pageNum, pageSize), null);
+        try {
+            stringRedisTemplate.opsForValue().set(key,gson.toJson(page));
+        } catch (Exception e) {
+            log.error("UserController[recommend]写入缓存失败");
+        }
         return ResultUtils.success(page);
     }
 }
