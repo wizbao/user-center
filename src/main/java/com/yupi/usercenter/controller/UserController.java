@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -145,7 +146,7 @@ public class UserController {
 
     @GetMapping("/delete")
     @ApiOperation(value = "用户删除")
-    public BaseResponse<Boolean> deleteUser( @RequestParam("id") Long id, HttpServletRequest request) {
+    public BaseResponse<Boolean> deleteUser(@RequestParam("id") Long id, HttpServletRequest request) {
         User loginUser = userService.getLoginUser(request);
         if (!userService.isAdmin(loginUser)) {
             throw new BusinessException(ErrorCode.NO_AUTH);
@@ -183,8 +184,9 @@ public class UserController {
     @GetMapping("/recommend")
     @ApiOperation(value = "用户推荐")
     public BaseResponse<IPage<User>> recommend(long pageNum, long pageSize) {
+        // todo 根据当前用户信息,推荐用户.不同用户看到的内容不同
         // 先查缓存，如果有缓存，直接返回结果
-        String key = String.format("%s:%s:%s","ally-link","user","recommend");
+        String key = "ally-link:user:recommend";
         String userPageStr = stringRedisTemplate.opsForValue().get(key);
         Gson gson = new Gson();
         Page<User> userPage = gson.fromJson(userPageStr, new TypeToken<Page<User>>() {
@@ -195,7 +197,7 @@ public class UserController {
         // 没有缓存，查数据库并写入缓存
         Page<User> page = userService.page(Page.of(pageNum, pageSize), null);
         try {
-            stringRedisTemplate.opsForValue().set(key,gson.toJson(page));
+            stringRedisTemplate.opsForValue().set(key, gson.toJson(page), 10, TimeUnit.MINUTES);
         } catch (Exception e) {
             log.error("UserController[recommend]写入缓存失败");
         }

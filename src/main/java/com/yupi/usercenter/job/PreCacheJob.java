@@ -10,6 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @Description 缓存预热任务
@@ -28,14 +29,14 @@ public class PreCacheJob {
 
     @Scheduled(cron = "0 0 0 * * ?")
     private void preUserCache() {
-        log.info("开始缓存预热");
-        String key = String.format("%s:%s:%s", "ally-link", "user", "recommend");
+        log.info("PreCacheJob[preUserCache]预热用户缓存 start");
+        String key = "ally-link:user:recommend";
         Page<User> page = userService.page(Page.of(1, 100), null);
         Gson gson = new Gson();
         try {
-            stringRedisTemplate.opsForValue().set(key, gson.toJson(page));
+            stringRedisTemplate.opsForValue().set(key, gson.toJson(page), 10, TimeUnit.MINUTES);
         } catch (Exception e) {
-            log.error("PreCacheJob[preUserCache]用户缓存预热失败");
+            log.error("PreCacheJob[preUserCache]用户缓存预热 fail");
         }
     }
 
